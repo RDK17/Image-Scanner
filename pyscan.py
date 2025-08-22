@@ -6,14 +6,12 @@ def take_picture(avg_contours = False):
     img_shape = cap.read()[1].shape
     img = np.zeros(img_shape)
     tot_contours = 0
-    n = 0
     while True:
 
         ret, frame = cap.read()
         contour_img = img_of_contours(frame)
         if avg_contours:
             tot_contours += len(get_contours(contour_img))
-            n+=1
         cv.imshow("contours", contour_img)
         key = cv.waitKey(1) & 0xFF
         if key == ord('q'):
