@@ -109,27 +109,5 @@ def get_box(img, ret_type = "image"):
     elif ret_type == "points":
         return box
 
-##def get_close_contours(contours, epsilon):
-#    hausdorff = cv.createHausdorffDistanceExtractor()
-#    G = nx.Graph()
-#    n = len(contours)
-#    G.add_nodes_from(range(n))
-#    for i in range(n):
-#        for j in range(i+1,n):
-#            d = hausdorff.computeDistance(contours[i], contours[j])
-#            if d < epsilon:
-#                G.add_edge(i,j)
-#    
-#    close_contours = list(nx.connected_components(G))
-#    print(close_contours)
-#    new_contours = []
-#    for component in close_contours:
-#        new_cnt = np.vstack(tuple(cnt for cnt in component))
-#        if new_cnt.shape[0] >= 2:
-#            new_contours.append(new_cnt.reshape(-1,1,2))
-#    return new_contours
-#
-#g = lambda x: get_close_contours(get_contours(x),5.0)
-
 take_picture(False, False)
 
