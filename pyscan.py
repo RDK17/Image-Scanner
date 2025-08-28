@@ -1,6 +1,5 @@
 import cv2 as cv
 import numpy as np
-import networkx as nx
 
 def take_picture(outline = False, avg_contours = False): #take a picture
     cap = cv.VideoCapture(0)
@@ -17,6 +16,7 @@ def take_picture(outline = False, avg_contours = False): #take a picture
         else:
             picture = frame
             picture_box = get_box(picture)
+            
             cv.imshow("to be scanned", picture_box)
         if avg_contours:
             tot_contours += len(get_contours(picture))
@@ -33,7 +33,8 @@ def take_picture(outline = False, avg_contours = False): #take a picture
         if key == ord('v'):
             view_contours(frame,5, show_min_rect = True)
         if key == ord('s'):
-            box = get_box(frame, ret_type = "points")
+            ret, current_frame = cap.read()
+            box = get_box(current_frame, "points")
             s = box.sum(axis = 1)
             diff = np.diff(box, axis=1)
             tl = box[np.argmin(s)]
@@ -45,14 +46,10 @@ def take_picture(outline = False, avg_contours = False): #take a picture
             width = np.linalg.norm(tl - tr)
             pts2 = np.array([[0,0],[width,0],[width,height],[0,height]], dtype = np.float32)
             M = cv.getPerspectiveTransform(pts1,pts2)
-            dst = cv.warpPerspective(frame,M,(int(width),int(height)))
+            dst = cv.warpPerspective(current_frame,M,(int(width),int(height)))
             cv.imshow("scanned", dst)
             cv.waitKey(2000)
-            cv.destroyWindow("scanned")
-
-
-
-            
+            cv.destroyWindow("scanned") 
         
     if avg_contours:
         print(f"average number of contours detected per frame: {int(tot_contours/n)}")
@@ -63,7 +60,7 @@ def get_contours(img):
     img_c = img.copy()
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     mid = np.median(gray)
-    #gray = cv.GaussianBlur(gray,(5,5),0)
+    gray = cv.GaussianBlur(gray,(5,5),0)
     edged = cv.Canny(gray, .66*mid, 1.33*mid)
     contours, _ = cv.findContours(edged.copy(), cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     return contours
@@ -110,4 +107,5 @@ def get_box(img, ret_type = "image"):
         return box
 
 take_picture(False, False)
+
 
