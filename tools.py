@@ -44,6 +44,29 @@ def partition(img, d, epsilon):
     prtn = list(nx.connected_components(G))
     return prtn
 
+def adj_box(pts,c):
+    dtl = np.array([-c,-c])
+    dtr = np.array([c,-c])
+    dbl = np.array([-c,c])
+    dbr = np.array([c,c])
+    new_pts = [pts[0] + dtl, pts[1] + dtr, pts[2] + dbr, pts[3] + dbl]
+    return np.array(new_pts, dtype = np.float32)
+
+def get_fit_isometry(pts1, scale = 0, get_dims=False):
+    if len(pts1) != 4:
+        print(f"get_fit_isometry: pts1 has only {len(pts1)} points")
+        return None
+    pts1 = pts1.astype(np.float32)
+    tl, tr, br, bl = pts1
+    pts1 = adj_box(pts1, scale)
+    height = np.linalg.norm(tl - bl)
+    width = np.linalg.norm(tl - tr)
+    pts2 = np.array([[0,0],[width,0],[width,height],[0,height]], dtype = np.float32)
+    M = cv.getPerspectiveTransform(pts1,pts2)
+    if get_dims:
+        return M, width, height
+    return M
+
 
 
 img = cv.imread("GOBRUINSW.jpeg")
@@ -66,4 +89,4 @@ img = cv.imread("GOBRUINSW.jpeg")
 ##cv.destroyAllWindows()
 
 #print(len(get_contours(img)))
-partition(img, end_d, 8.0)
+#partition(img, end_d, 8.0)
