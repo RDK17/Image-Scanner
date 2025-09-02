@@ -1,6 +1,5 @@
 import cv2 as cv
 import numpy as np
-import networkx as nx
 from tools import get_fit_isometry
 
 def take_picture(outline = False, avg_contours = False): #take a picture
