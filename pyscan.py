@@ -1,5 +1,7 @@
 import cv2 as cv
 import numpy as np
+import networkx as nx
+from tools import get_fit_isometry
 
 def take_picture(outline = False, avg_contours = False): #take a picture
     cap = cv.VideoCapture(0)
@@ -10,14 +12,19 @@ def take_picture(outline = False, avg_contours = False): #take a picture
     while True:
 
         ret, frame = cap.read()
+
         if outline:
             picture = img_of_contours(frame)
             cv.imshow("contours", picture)
         else:
             picture = frame
             picture_box = get_box(picture)
-            
-            cv.imshow("to be scanned", picture_box)
+            if get_quad(picture) is not None:
+                if len(get_quad(picture)) == 4:
+                    scan(picture, t=1)
+
+            cv.imshow("scanning...", picture_box)
+
         if avg_contours:
             tot_contours += len(get_contours(picture))
             n+=1
@@ -25,32 +32,21 @@ def take_picture(outline = False, avg_contours = False): #take a picture
         key = cv.waitKey(1) & 0xFF
         if key == ord('q'):
             break
+
         if key == ord('c'):
             img = picture
             cv.imshow("img", img)
             cv.waitKey(2000)
             cv.destroyWindow("img")
+
         if key == ord('v'):
             view_contours(frame,5, show_min_rect = True)
+
         if key == ord('s'):
-            ret, current_frame = cap.read()
-            box = get_box(current_frame, "points")
-            s = box.sum(axis = 1)
-            diff = np.diff(box, axis=1)
-            tl = box[np.argmin(s)]
-            br = box[np.argmax(s)]
-            tr = box[np.argmin(diff)]
-            bl = box[np.argmax(diff)]
-            pts1 = np.array([tl, tr, br, bl], dtype = np.float32)
-            height = np.linalg.norm(tl - bl)
-            width = np.linalg.norm(tl - tr)
-            pts2 = np.array([[0,0],[width,0],[width,height],[0,height]], dtype = np.float32)
-            M = cv.getPerspectiveTransform(pts1,pts2)
-            dst = cv.warpPerspective(current_frame,M,(int(width),int(height)))
-            cv.imshow("scanned", dst)
-            cv.waitKey(2000)
-            cv.destroyWindow("scanned") 
-        
+            _, current_frame = cap.read()
+            scan(current_frame)
+
+
     if avg_contours:
         print(f"average number of contours detected per frame: {int(tot_contours/n)}")
     cap.release()
@@ -58,7 +54,10 @@ def take_picture(outline = False, avg_contours = False): #take a picture
 
 def get_contours(img):
     img_c = img.copy()
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    if len(img.shape) == 3 and img.shape[2] == 3:
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    else:
+        gray = img
     mid = np.median(gray)
     gray = cv.GaussianBlur(gray,(5,5),0)
     edged = cv.Canny(gray, .66*mid, 1.33*mid)
@@ -70,7 +69,10 @@ def img_of_contours(img, f = get_contours, all_cnt = True, show_min_rect = False
         contours = f(img)
     else:
         contours = sorted(f(img), key = lambda c: c.size, reverse = True)[view]
-    width, height, _ = img.shape
+    if len(img.shape)==3:
+        width, height, _ = img.shape
+    else:
+        width, height = img.shape
     black_img = np.zeros((width, height, 3), dtype = np.uint8)
     cv.drawContours(black_img, contours,-1,(0,255,0),2)
     if show_min_rect:
@@ -81,6 +83,7 @@ def img_of_contours(img, f = get_contours, all_cnt = True, show_min_rect = False
     if show_poly:
         epsilon = 0.05*cv.arcLength(contours, True)
         poly = cv.approxPolyDP(contours, epsilon, True)
+        print(f"number of vertices: {len(poly)}")
         cv.drawContours(black_img, [poly], -1, (0,255,0), 3)
     return black_img
 
@@ -106,6 +109,56 @@ def get_box(img, ret_type = "image"):
     elif ret_type == "points":
         return box
 
+def get_quad(img, ret_type ="image"):
+    box = get_box(img, "points")
+
+    if box is None or len(box)< 4:
+        print("[WARN] get_box() retuned less than 4 points")
+        return None
+
+    try:
+        s = box.sum(axis = 1)
+        diff = np.diff(box, axis=1)
+        tl = box[np.argmin(s)]
+        br = box[np.argmax(s)]
+        tr = box[np.argmin(diff)]
+        bl = box[np.argmax(diff)]
+        pts1 = np.array([tl, tr, br, bl], dtype = np.float32)
+        M, width, height = get_fit_isometry(pts1, scale = 15, get_dims = True)
+        new_img = cv.warpPerspective(img,M,(int(width),int(height)))
+        dst = cv.cvtColor(new_img,cv.COLOR_BGR2GRAY)
+        dst = cv.GaussianBlur(dst,(5,5),0)
+        ret, th = cv.threshold(dst,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU)
+        contours = get_contours(th)
+        contours = sorted(contours, key = lambda c: c.size, reverse = True)
+        if contours != []:
+            epsilon = 0.05*cv.arcLength(contours[0], True)
+            poly = cv.approxPolyDP(contours[0], epsilon, True)
+            cv.drawContours(new_img,[poly], 0 ,(255,0,0),2)
+        else:
+            return None
+        if ret_type == "image":
+            return new_img
+        if ret_type == "points":
+            M_inv = np.linalg.inv(M)
+            poly = poly.astype(np.float32)
+            return cv.perspectiveTransform(poly,M_inv)
+    except Exception as e:
+        print("[ERROR] in get_quad:", e)
+        return None
+
+def scan(img, t=2):
+    pts1 = get_quad(img, ret_type = "points")
+    if get_fit_isometry(pts1) is not None:
+        M, width, height = get_fit_isometry(pts1, scale = -10, get_dims = True)
+        print(M, width, height)
+        new_img = cv.warpPerspective(img,M,(int(width),int(height)))
+    else:
+        print("couldn't fit isometry")
+        new_img = img
+    cv.imshow("scanned", new_img)
+    cv.waitKey(t*1000)
+    cv.destroyWindow("scanned")
+
+
 take_picture(False, False)
-
-
