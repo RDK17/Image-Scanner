@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
-import networkx as nx 
+import time
+import graphs
 
 def end_d(A,B, dst_only = True):
     d = lambda x,y: np.linalg.norm(x-y)
@@ -15,6 +16,40 @@ def end_d(A,B, dst_only = True):
     dst = d(pts[0],pts[1])
     return dst, pts
 
+
+def is_hashable(dt):
+    try:
+        hash(dt)
+    except TypeError:
+        return False
+    return True
+
+
+hd = cv.createHausdorffDistanceExtractor()
+
+
+def safeHD(x, y, hd=hd): #BROKEN
+    if x is None or y is None or len(x) == 0 or len(y) == 0:
+        return float("inf")
+    if type(x) == tuple:
+        x = tup2cnt(x)
+    if type(y) == tuple:
+        y = tup2cnt(y)
+    return hd.computeDistance(x, y)
+
+def my_hd(cnt1, cnt2):
+    if type(cnt1) == tuple:
+        cnt1 = tup2cnt(cnt1)
+    if type(cnt2) == tuple:
+        cnt2 = tup2cnt(cnt2)
+    A = cnt1.reshape(-1,2).astype(np.float32)
+    B = cnt2.reshape(-1,2).astype(np.float32)
+    dists = np.linalg.norm(A[:, None, :] - B[None, :, :], axis=2)
+    min_A_2_B = dists.min(axis=1)
+    min_B_2_A = dists.min(axis=0)
+    return max(min_A_2_B.max(), min_B_2_A.max())  
+
+
 def get_contours(img):
     img_c = img.copy()
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -24,25 +59,6 @@ def get_contours(img):
     contours, _ = cv.findContours(edged.copy(), cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     return contours
 
-def get_density_graph(contours, d, epsilon):
-    #brute force find edges in contours where an edge between x and y must have d(x,y) < epsilon
-    #return visited cnts(stored as a set) as an array
-    G = nx.Graph()
-    n = len(contours)
-    G.add_nodes_from(range(n)) 
-    for i in range(n):
-        for j in range(n):
-            #print(i,j)
-            if i!=j and d(contours[i], contours[j]) < epsilon:
-                G.add_edge(i,j)
-    return G
-
-
-def partition(img, d, epsilon):
-    contours = get_contours(img)
-    G = get_density_graph(contours,d,epsilon)
-    prtn = list(nx.connected_components(G))
-    return prtn
 
 def adj_box(pts,c):
     dtl = np.array([-c,-c])
@@ -51,6 +67,34 @@ def adj_box(pts,c):
     dbr = np.array([c,c])
     new_pts = [pts[0] + dtl, pts[1] + dtr, pts[2] + dbr, pts[3] + dbl]
     return np.array(new_pts, dtype = np.float32)
+
+
+def cnts2ENG(nodes, epsilon, d): #pending
+    if not is_hashable(nodes[0]):
+        nodes = [cnt2tup(node) for node in nodes]
+        G = graphs.ENG(epsilon, d)
+    for node in nodes:
+        G.add_node(node)
+    return G
+
+
+def cnt2tup(cnt):
+    return tuple(tuple(pt.ravel()) for pt in cnt)
+
+
+def tup2cnt(tup):
+    cnt = np.array(tup, dtype = np.int32)
+    cnt = cnt.reshape(-1,1,2)
+    return cnt
+
+
+def get_voted_cnt(G): #pending
+    cmpts = G.connected_components()
+    voted_party = max(cmpts, key = lambda cmpt: len(cmpt))
+    for node in G.nodes:
+        if node in voted_party:
+            return node
+
 
 def get_fit_isometry(pts1, scale = 0, get_dims=False):
     if len(pts1) != 4:
@@ -68,25 +112,12 @@ def get_fit_isometry(pts1, scale = 0, get_dims=False):
     return M
 
 
+if __name__ == "__main__":
+    None
+    #img = cv.imread("GOBRUINSW.jpeg")
+    #contours = get_contours(img)
+    #cnts = sorted(contours, key = lambda cnt: len(cnt), reverse = True)[:5]
+    #G = cnts2ENG(cnts,10,safeHD)
+    #winner = get_voted_cnt(G)
 
-img = cv.imread("GOBRUINSW.jpeg")
-
-##contours = get_contours(img)
-##
-##n1, n2 = np.random.randint(0,len(contours),size = 2)
-##cnt1 = contours[n1]
-##cnt2 = contours[n2]
-##
-##min_pts = set_d(cnt1,cnt2)[1]
-##min_dst = set_d(cnt1, cnt2)[0]
-##print(f"distance between contours: {min_dst}")
-##
-##black_img = np.zeros(img.shape)
-##cv.drawContours(black_img, [cnt1,cnt2] , -1, (0,255,0), 4)
-##cv.line(black_img, min_pts[0][0], min_pts[1][0], (0,0,255), 2)
-##cv.imshow("contours", black_img)
-##cv.waitKey(5000)
-##cv.destroyAllWindows()
-
-#print(len(get_contours(img)))
-#partition(img, end_d, 8.0)
+    
